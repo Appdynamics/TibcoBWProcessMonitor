@@ -1,0 +1,35 @@
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <groupId>com.appdynamics.bwprocessmetrics</groupId>
+    <artifactId>hawkmonitor</artifactId>
+    <version>1.0-SNAPSHOT</version>
+    <packaging>jar</packaging>
+
+    <dependencies>
+        <dependency>
+            <groupId>doesntMatter</groupId>
+            <artifactId>doesntMatter</artifactId>
+            <version>doesntMatter</version>
+            <scope>system</scope>
+            <systemPath>${tibhawk}/lib/talon.jar</systemPath>
+        </dependency>
+        <dependency>
+            <groupId>dontCare</groupId>
+            <artifactId>dontCare</artifactId>
+            <version>dontCare</version>
+            <scope>system</scope>
+            <systemPath>${tibhawk}/lib/console.jar</systemPath>
+        </dependency>
+        <dependency>
+            <groupId>irrelevant</groupId>
+            <artifactId>irrelevant</artifactId>
+            <version>irrelevant</version>
+            <scope>system</scope>
+            <systemPath>${appd-ma}/machineagent.jar</systemPath>
+        </dependency>
+    </dependencies>
+
+</project>
