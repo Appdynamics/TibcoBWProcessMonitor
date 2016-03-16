@@ -63,7 +63,6 @@
                 <version>2.6</version>
                 <configuration>
                     <includes>
-                        <include>conf/monitor.xml</include>
                         <include>com/**</include>
                     </includes>
                 </configuration>

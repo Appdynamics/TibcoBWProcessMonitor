@@ -10,103 +10,81 @@ import java.util.Map;
  */
 public class ProcessInfoAggregator {
 
-    private Map<String, ProcessTree> processTrees;
+    private Map<String, ProcessStats> allProcessStats;
 
     public static final Logger logger = Logger.getLogger("com.singularity.TibcoJMXMonitor.ProcessInfo");
 
     public ProcessInfoAggregator() {
-        processTrees = new HashMap<String, ProcessTree>();
+        allProcessStats = new HashMap<String, ProcessStats>();
     }
 
-    public Map<String, ProcessTree> getProcessTrees() {
-        return processTrees;
+    public Map<String, ProcessStats> getAllProcessStats() {
+        return allProcessStats;
     }
 
     public void handle(ProcessInfo info) {
         String procName = info.getProcessName();
         String mainProcName = info.getMainProcessName();
         String subProcessName = info.getSubProcessName();
+
+        if (logger.isDebugEnabled()) {
+            logger.debug("handle: procName=[" + procName + "], mainProcName=[" + mainProcName + ", subProcName=[" + subProcessName + "], duration=" + info.getDuration());
+        }
+
         if (procName == null || procName.isEmpty()) {
-            logger.info("handling error, no process name");
+            logger.error("handling error, no process name");
             handleError(info);
         } else if (mainProcName == null || mainProcName.isEmpty()) {
             // Ignore the sub process, this case only makes sense if the sub-process name is empty
-            handleStandaloneProcess(info);
+            logger.error("No main process name, error!");
+            handleError(info);
         } else if (mainProcName.equals(procName)) {
-            if (subProcessName == null || subProcessName.isEmpty()) {
-                // handle as a standalone process info object
-                handleStandaloneProcess(info);
-            } else if (subProcessName.equals(procName)) {
-                // all names are equal -- doesn't really make sense.  Handle as standalone
-                handleStandaloneProcess(info);
-            } else {
-                // Does this make sense?  Why have a sub-process name if the information is not
-                // relevant to that sub-process?  Just to say that a sub-process exists?
-                handleMainAndSub(procName, subProcessName, info.getDuration(), false);
-            }
+            // Shouldn't happen
+            logger.error("Invalid data returned, main process name and process name are both " + mainProcName);
         } else if (subProcessName == null || subProcessName.isEmpty()) {
-            // This seems wrong -- a non-null main process name and a different non-null process name, but no
-            // subprocess name??  Handle as main and sub-process, but that might not be the right thing.
-            handleMainAndSub(mainProcName, procName, info.getDuration(), true);
+            // The procName here is the job name
+            handleNoSubProcess(mainProcName, info.getDuration());
         } else if (procName.equals(subProcessName)) {
-            // Error.  A Process cannot have itself as a sub-process
+            // Error.  A process cannot have itself as a sub-process
+            logger.error("Invalid data returned, process name is same as sub-process name: " + procName);
+            handleError(info);
+        } else if (mainProcName.equals(subProcessName)) {
+            // Error.  A main process cannot have itself as a sub-process
+            logger.error("Invalid data returned, main process name is same as sub-process name: " + mainProcName);
             handleError(info);
         } else {
             // Main non-null, process name non-null, sub-process name non-null
-            handleFullInfo(info);
+            handleFullInfo(mainProcName, subProcessName, info.getDuration());
         }
     }
 
-    private void handleMainAndSub(String mainProcessName, String subProcessName, long duration, boolean metricsBelongToSub) {
+    private void handleNoSubProcess(String mainProcessName, long duration) {
         if (logger.isDebugEnabled()) {
-            logger.debug("handle main/sub, main=" + mainProcessName + ", sub=" + subProcessName);
+            logger.debug("handle main, main=" + mainProcessName);
         }
-        synchronized (processTrees) {
-            ProcessTree parentTree = processTrees.get(mainProcessName);
-            if (parentTree == null) {
-                parentTree = new ProcessTree(mainProcessName);
-                processTrees.put(mainProcessName, parentTree);
+        synchronized (allProcessStats) {
+            ProcessStats stats = allProcessStats.get(mainProcessName);
+            if (stats == null) {
+                stats = new ProcessStats(mainProcessName);
+                allProcessStats.put(mainProcessName, stats);
             }
 
-            ProcessTree childTree = parentTree.getChild(subProcessName);
-            if (metricsBelongToSub) {
-                childTree.putMetrics(duration);
-            } else {
-                parentTree.putMetrics(duration);
-            }
+            stats.putMetrics(duration);
         }
     }
 
-    private void handleStandaloneProcess(ProcessInfo info) {
+    private void handleFullInfo(String mainProcessName, String subProcessName, long duration) {
         if (logger.isDebugEnabled()) {
-            logger.debug("handle proc, name=" + info.getProcessName() + ", main=" + info.getMainProcessName());
+            logger.debug("handle full, parent=" + mainProcessName + ", subProc=" + subProcessName);
         }
-        synchronized (processTrees) {
-            ProcessTree existing = processTrees.get(info.getProcessName());
-            if (existing == null) {
-                existing = new ProcessTree(info.getProcessName());
-                processTrees.put(info.getProcessName(), existing);
+        synchronized (allProcessStats) {
+            ProcessStats stats = allProcessStats.get(mainProcessName);
+            if (stats == null) {
+                stats = new ProcessStats(mainProcessName);
+                allProcessStats.put(mainProcessName, stats);
             }
 
-            existing.putMetrics(info.getDuration());
-        }
-    }
-
-    private void handleFullInfo(ProcessInfo info) {
-        if (logger.isDebugEnabled()) {
-            logger.debug("handle full, parent=" + info.getMainProcessName() + ", proc=" + info.getProcessName() + ", sub=" + info.getSubProcessName());
-        }
-        synchronized (processTrees) {
-            ProcessTree parent = processTrees.get(info.getMainProcessName());
-            if (parent == null) {
-                parent = new ProcessTree(info.getMainProcessName());
-                processTrees.put(info.getMainProcessName(), parent);
-            }
-
-            ProcessTree process = parent.getChild(info.getProcessName());
-            process.putMetrics(info.getDuration());
-
-            process.getChild(info.getSubProcessName());
+            stats.putMetrics(duration, subProcessName);
         }
     }
 

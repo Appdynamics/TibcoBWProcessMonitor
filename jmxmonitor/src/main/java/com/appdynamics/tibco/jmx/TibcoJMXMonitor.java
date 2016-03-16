@@ -135,7 +135,7 @@ public class TibcoJMXMonitor extends AManagedMonitor {
                     logger.trace("Found canonical object name " + cName);
                     if(name.getCanonicalName().contains(mbeanPattern)) {
                         mbeanName = name;
-                        logger.info("Found ObjectName for Tibco");
+                        logger.debug("Found ObjectName for Tibco");
                     }
                 }
 
@@ -215,7 +215,7 @@ public class TibcoJMXMonitor extends AManagedMonitor {
             }
         }
 
-        logger.info("Aggregated " + agg.getProcessTrees().size() + " trees");
+        logger.info("Aggregated " + agg.getAllProcessStats().size() + " trees");
         printProcessMetricTree(agg);
     }
 
@@ -229,32 +229,40 @@ public class TibcoJMXMonitor extends AManagedMonitor {
             logger.debug("Metric print: key=" + key + ", duration=" + duration + ", count=" + observationCount);
         }
         if (observationCount > 0) {
+            // Only print the duration if there is a positive count
             getMetricWriter(metricPathPrefix + key + "|duration", MetricWriter.METRIC_AGGREGATION_TYPE_AVERAGE,
                     MetricWriter.METRIC_TIME_ROLLUP_TYPE_AVERAGE, MetricWriter.METRIC_CLUSTER_ROLLUP_TYPE_INDIVIDUAL).printMetric(String.valueOf(duration));
         }
 
+        // Always print the count, even if 0
         getMetricWriter(metricPathPrefix + key + "|activeCount", MetricWriter.METRIC_AGGREGATION_TYPE_AVERAGE,
                 MetricWriter.METRIC_TIME_ROLLUP_TYPE_AVERAGE, MetricWriter.METRIC_CLUSTER_ROLLUP_TYPE_INDIVIDUAL).printMetric(String.valueOf(observationCount));
     }
 
+    protected void printSubProcessInfo(String key, Map<String, int[]> subProcessInfo) {
+        for (Map.Entry<String, int[]> entry : subProcessInfo.entrySet()) {
+            if (logger.isDebugEnabled()) {
+                logger.debug("Metric print for sub-process: key=" + entry.getKey());
+            }
+            
+            getMetricWriter(metricPathPrefix + key + "|SubProcessInvocations|" + entry.getKey() + "|count", MetricWriter.METRIC_AGGREGATION_TYPE_AVERAGE,
+                    MetricWriter.METRIC_TIME_ROLLUP_TYPE_AVERAGE, MetricWriter.METRIC_CLUSTER_ROLLUP_TYPE_INDIVIDUAL).printMetric(String.valueOf(entry.getValue()[0]));
+        }
+    }
+
     protected void printProcessMetricTree(ProcessInfoAggregator agg) {
-        for (ProcessTree tree : agg.getProcessTrees().values()) {
+        for (ProcessStats tree : agg.getAllProcessStats().values()) {
             printProcessMetricTree(tree.getProcessName(), tree);
         }
     }
 
-    protected void printProcessMetricTree(String keyRoot, ProcessTree tree) {
+    protected void printProcessMetricTree(String keyRoot, ProcessStats tree) {
         int count = tree.getCount();
         if (logger.isDebugEnabled()) {
             logger.debug("Printing tree, metric prefix is " + keyRoot + ", count is " + count);
         }
         printIndividualMetric(keyRoot, tree.getAverageDuration(), tree.getCount());
-
-        Map<String, ProcessTree> childMap = tree.getChildren();
-        for (String subProc : childMap.keySet()) {
-            ProcessTree subTree = childMap.get(subProc);
-            printProcessMetricTree(keyRoot + "|SubProcess|" + subProc, subTree);
-        }
+        printSubProcessInfo(keyRoot, tree.getSubProcessInvocations());
     }
 
     private void connectByRMI(int port) {

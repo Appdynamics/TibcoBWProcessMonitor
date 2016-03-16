@@ -11,21 +11,4 @@
         <module>jmxmonitor</module>
     </modules>
 
-    <dependencies>
-        <dependency>
-            <groupId>doesntMatter</groupId>
-            <artifactId>doesntMatter</artifactId>
-            <version>doesntMatter</version>
-            <scope>system</scope>
-            <systemPath>/Users/trader/tibco/bw6/hawk/5.1/lib/talon.jar</systemPath>
-        </dependency>
-        <dependency>
-            <groupId>doesntMatter</groupId>
-            <artifactId>doesntMatter</artifactId>
-            <version>doesntMatter</version>
-            <scope>system</scope>
-            <systemPath>/Users/trader/tibco/bw6/hawk/5.1/lib/console.jar</systemPath>
-        </dependency>
-    </dependencies>
-
 </project>
