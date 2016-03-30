@@ -35,6 +35,7 @@ Tibco processes must be run with the standard JMX localhost command-line options
 -Dcom.sun.management.jmxremote.port=<JMX port>
 -Dcom.sun.management.jmxremote.ssl=false
 
+The .tra file option Jmx.Enabled=true must be set in the .tra file for every process to be monitored.
 
 METRICS PROVIDED
 
