@@ -23,7 +23,7 @@ public class MockJMXMonitor extends TibcoJMXMonitor {
         System.out.println(metricPathPrefix + key + ":" + value + " -> AVERAGE,CURRENT,COLLECTIVE");
     }
 
-    protected void printIndividualMetric(String key, long duration, int observationCount) {
+    protected void printProcessInfo(String key, long duration, int observationCount) {
         System.out.println(metricPathPrefix + key + "|duration:" + duration + " -> AVERAGE,CURRENT,INDIVIDUAL");
         System.out.println(metricPathPrefix + key + "|activeCount:" + observationCount + " -> AVERAGE,CURRENT,INDIVIDUAL");
     }

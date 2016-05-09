@@ -1,14 +1,14 @@
 package com.appdynamics.tibco.jmx;
 
+import com.appdynamics.tibco.jmx.currentinfo.ProcessExecutionTracker;
+import com.appdynamics.tibco.jmx.execinfo.BWExecutionTracker;
+import com.appdynamics.tibco.jmx.processinfo.ProcessAndActivityTracker;
 import com.singularity.ee.agent.systemagent.api.AManagedMonitor;
-import com.singularity.ee.agent.systemagent.api.MetricWriter;
 import com.singularity.ee.agent.systemagent.api.TaskExecutionContext;
 import com.singularity.ee.agent.systemagent.api.TaskOutput;
 import com.singularity.ee.agent.systemagent.api.exception.TaskExecutionException;
 
 import javax.management.*;
-import javax.management.openmbean.CompositeData;
-import javax.management.openmbean.TabularData;
 import javax.management.remote.JMXConnector;
 import javax.management.remote.JMXConnectorFactory;
 import javax.management.remote.JMXServiceURL;
@@ -30,7 +30,59 @@ public class TibcoJMXMonitor extends AManagedMonitor {
     private JMXConnector jmxConnector;
     private MBeanServerConnection mbeanConn = null;
 
-    public static final Logger logger = Logger.getLogger("com.singularity.TibcoJMXMonitor");
+    private MetricHandler metrics;
+    private BWExecutionTracker execTracker;
+    private ProcessExecutionTracker oldProcessTracker;
+    private ProcessAndActivityTracker newProcessTracker;
+
+    // Metric override capability
+    private static final Map<String, String> opsAndMetricNames = new HashMap<String, String>();
+
+    // Keys
+    public static final String INVOCATIONS = "Metric-INVOCATIONS";
+    public static final String ART = "Metric-ART";
+    public static final String CONCURRENT = "Metric-CONCURRENT";
+    public static final String TOTAL_ACTIVE = "Metric-ACTIVE-TOTAL";
+    public static final String PROCESS_ACTIVE = "Metric-ACTIVE-PROCESS";
+    public static final String RUNNING = "Metric-RUNNING";
+    public static final String CREATED = "Metric-CREATED";
+    public static final String QUEUED = "Metric-QUEUED";
+    public static final String SUSPENDED = "Metric-SUSPENDED";
+    public static final String SWAPPED = "Metric-SWAPPED";
+    public static final String ABORTED = "Metric-ABORTED";
+    public static final String COMPLETED = "Metric-COMPLETED";
+    public static final String ERRORS = "Metric-ERRORS";
+
+    static {
+        opsAndMetricNames.put(INVOCATIONS, "Invocations");
+        opsAndMetricNames.put(ART, "Average Response Time (ms)");
+        opsAndMetricNames.put(CONCURRENT, "Concurrent Invocations");
+        opsAndMetricNames.put(TOTAL_ACTIVE, "Total Active Process Count");
+        opsAndMetricNames.put(PROCESS_ACTIVE, "Active Count");
+        opsAndMetricNames.put(RUNNING, "Total Running Processes");
+        opsAndMetricNames.put(CREATED, "Total Created");
+        opsAndMetricNames.put(QUEUED, "Percent Queued");
+        opsAndMetricNames.put(SUSPENDED, "Percent Suspended");
+        opsAndMetricNames.put(SWAPPED, "Percent Swapped");
+        opsAndMetricNames.put(ABORTED, "Percent Aborted");
+        opsAndMetricNames.put(COMPLETED, "Percent Completed");
+        opsAndMetricNames.put(ERRORS, "Errors");
+    }
+
+    private static final Object[] NO_ARGS = {};
+    private static final String[] EMPTY_SIG = {};
+
+    /*
+     * Logger.  Logging settings for debug or trace logging need to be enabled with this configuration added
+     * to conf/logging/log4j.xml in the machineagent folder:
+     *
+     *     <logger name="com.singularity.TibcoJMXMonitor" additivity="false">
+     *         <level value="info"/>         <---------- change "info" to either "debug" or "trace"
+     *         <appender-ref ref="FileAppender"/>
+     *     </logger>
+     */
+    private static final Logger logger = Logger.getLogger("com.singularity.TibcoJMXMonitor");
+    private static final Logger mbeanLogger = Logger.getLogger("com.singularity.TibcoJMXMonitor.mbeans");
 
     public TibcoJMXMonitor() {
         isInitialized = false;
@@ -42,7 +94,7 @@ public class TibcoJMXMonitor extends AManagedMonitor {
 
     public TaskOutput execute(Map<String, String> arguments, TaskExecutionContext taskExecutionContext) throws TaskExecutionException {
 
-        logger.info("Execute");
+        logger.debug("Execute");
 
         if (isDisabled) {
             return new TaskOutput("Tibco BW JMX extension has been disabled");
@@ -68,6 +120,19 @@ public class TibcoJMXMonitor extends AManagedMonitor {
                     throw new TaskExecutionException(new IllegalArgumentException("Missing required argument object-name-pattern in monitor.xml"));
                 }
             }
+
+            // Metric name overrides
+            for (String key : arguments.keySet()) {
+                if (key.startsWith("Metric-")) {
+                    opsAndMetricNames.put(key, arguments.get(key));
+                }
+            }
+
+            metrics = new MetricHandler(this, metricPathPrefix, opsAndMetricNames);
+            execTracker = new BWExecutionTracker(metrics);
+            oldProcessTracker = new ProcessExecutionTracker(metrics);
+            newProcessTracker = new ProcessAndActivityTracker(metrics);
+
 
             if (!isDisabled) {
                 if (port == -1) {
@@ -126,27 +191,21 @@ public class TibcoJMXMonitor extends AManagedMonitor {
 
         boolean result = false;
 
+        logger.trace("execOnce begin");
+
         if (mbeanConn != null) {
             try {
-                ObjectName mbeanName = null;
                 Set<ObjectName> names = new TreeSet<ObjectName>(mbeanConn.queryNames(null, null));
                 for (ObjectName name : names) {
                     String cName = name.getCanonicalName();
-                    logger.trace("Found canonical object name " + cName);
-                    if(name.getCanonicalName().contains(mbeanPattern)) {
-                        mbeanName = name;
-                        logger.debug("Found ObjectName for Tibco");
+                    if (cName.contains(mbeanPattern)) {
+                        logger.debug("Found ObjectName for Tibco: " + cName);
+                        execTracker.getExecutionInfo(mbeanConn, name);
+                        newProcessTracker.getProcessStats(mbeanConn, name);
+                        result = true;
+                    } else if (logger.isTraceEnabled()) {
+                        logger.trace("Skipping object name " + cName);
                     }
-                }
-
-                if(mbeanName != null) {
-
-                    doExecInfo(mbeanName);
-                    doProcessInfo(mbeanName);
-
-                    result = true;
-                } else {
-                    logger.error("Failed to find ObjectName for Tibco");
                 }
 
             } catch (Exception e) {
@@ -155,6 +214,8 @@ public class TibcoJMXMonitor extends AManagedMonitor {
                 logger.error("Exec error, will retry", e);
             }
         }
+
+        logger.trace("execOnce end");
 
         return result;
     }
@@ -178,91 +239,13 @@ public class TibcoJMXMonitor extends AManagedMonitor {
         this.mbeanConn = mbeanConn;
     }
 
-    private void doExecInfo(ObjectName mbeanName) throws Exception {
-        CompositeData obj = (CompositeData) mbeanConn.invoke(mbeanName, "GetExecInfo", new Object[] {}, new String[] {});
-        Object status = obj.get("Status");
-        if (status != null && !status.equals("FAILURE")) {
-            printCollectiveMetric("ExecInfo|Status", "1");
-        } else {
-            printCollectiveMetric("ExecInfo|Status", "0");
-        }
-
-        printCollectiveMetric("ExecInfo|Uptime", obj.get("Uptime").toString());
-        printCollectiveMetric("ExecInfo|Threads", obj.get("Threads").toString());
-    }
-
-    private void doProcessInfo(ObjectName mbeanName) throws Exception {
-        // No-args should give us info for all processes...
-        Object[] params = { null, null, null, null, null };
-        // ...but of course we still have to give the reflection info for the args :-(
-        String[] types = { Long.class.getName(), String.class.getName(), Integer.class.getName(), Integer.class.getName(), String.class.getName() };
-
-        TabularData dataObj = (TabularData) mbeanConn.invoke(mbeanName, "GetProcesses", params, types);
-        ProcessInfoAggregator agg = new ProcessInfoAggregator();
-        if (dataObj != null) {
-            Collection<?> vals = dataObj.values();
-            if (vals != null) {
-
-                if (logger.isDebugEnabled()) {
-                    logger.debug("Process data object count: " + vals.size());
-                }
-                // Aggregate on process names
-                for (Object val : vals) {
-                    CompositeData cd = (CompositeData) val;
-                    ProcessInfo info = new ProcessInfo(cd);
-                    agg.handle(info);
-                }
-            }
-        }
-
-        logger.info("Aggregated " + agg.getAllProcessStats().size() + " trees");
-        printProcessMetricTree(agg);
-    }
-
-    protected void printCollectiveMetric(String key, String value) {
-        getMetricWriter(metricPathPrefix + key, MetricWriter.METRIC_AGGREGATION_TYPE_AVERAGE,
-                MetricWriter.METRIC_TIME_ROLLUP_TYPE_AVERAGE, MetricWriter.METRIC_CLUSTER_ROLLUP_TYPE_COLLECTIVE).printMetric(value);
-    }
-
-    protected void printIndividualMetric(String key, long duration, int observationCount) {
-        if (logger.isDebugEnabled()) {
-            logger.debug("Metric print: key=" + key + ", duration=" + duration + ", count=" + observationCount);
-        }
-        if (observationCount > 0) {
-            // Only print the duration if there is a positive count
-            getMetricWriter(metricPathPrefix + key + "|duration", MetricWriter.METRIC_AGGREGATION_TYPE_AVERAGE,
-                    MetricWriter.METRIC_TIME_ROLLUP_TYPE_AVERAGE, MetricWriter.METRIC_CLUSTER_ROLLUP_TYPE_INDIVIDUAL).printMetric(String.valueOf(duration));
-        }
-
-        // Always print the count, even if 0
-        getMetricWriter(metricPathPrefix + key + "|activeCount", MetricWriter.METRIC_AGGREGATION_TYPE_AVERAGE,
-                MetricWriter.METRIC_TIME_ROLLUP_TYPE_AVERAGE, MetricWriter.METRIC_CLUSTER_ROLLUP_TYPE_INDIVIDUAL).printMetric(String.valueOf(observationCount));
-    }
-
-    protected void printSubProcessInfo(String key, Map<String, int[]> subProcessInfo) {
-        for (Map.Entry<String, int[]> entry : subProcessInfo.entrySet()) {
-            if (logger.isDebugEnabled()) {
-                logger.debug("Metric print for sub-process: key=" + entry.getKey());
-            }
-            
-            getMetricWriter(metricPathPrefix + key + "|SubProcessInvocations|" + entry.getKey() + "|count", MetricWriter.METRIC_AGGREGATION_TYPE_AVERAGE,
-                    MetricWriter.METRIC_TIME_ROLLUP_TYPE_AVERAGE, MetricWriter.METRIC_CLUSTER_ROLLUP_TYPE_INDIVIDUAL).printMetric(String.valueOf(entry.getValue()[0]));
-        }
-    }
-
-    protected void printProcessMetricTree(ProcessInfoAggregator agg) {
-        for (ProcessStats tree : agg.getAllProcessStats().values()) {
-            printProcessMetricTree(tree.getProcessName(), tree);
-        }
-    }
-
-    protected void printProcessMetricTree(String keyRoot, ProcessStats tree) {
-        int count = tree.getCount();
-        if (logger.isDebugEnabled()) {
-            logger.debug("Printing tree, metric prefix is " + keyRoot + ", count is " + count);
-        }
-        printIndividualMetric(keyRoot, tree.getAverageDuration(), tree.getCount());
-        printSubProcessInfo(keyRoot, tree.getSubProcessInvocations());
+    private Object[] getProcessExceptions(ObjectName mbeanName) {
+        // NOT IMPLEMENTED: is is unclear what the GetProcessesExceptions JMX API uses for its time window.
+        // The docs don't say whether all exceptions from the last restart are returned, or exceptions for
+        // active process instances, or whatever.  If the answer is all process instances since the last restart,
+        // then the size of the return value would be monitonically increasing until a restart is done (not
+        // a good thing!).  For now, skip this data.
+        return null;
     }
 
     private void connectByRMI(int port) {

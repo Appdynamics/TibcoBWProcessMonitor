@@ -1,7 +1,10 @@
-package com.appdynamics.tibco.jmx;
+package com.appdynamics.tibco.jmx.currentinfo;
 
+import com.appdynamics.tibco.jmx.ProcessStats;
+import com.appdynamics.tibco.jmx.currentinfo.ProcessInfo;
 import org.apache.log4j.Logger;
 
+import javax.management.openmbean.CompositeData;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -11,18 +14,20 @@ import java.util.Map;
 public class ProcessInfoAggregator {
 
     private Map<String, ProcessStats> allProcessStats;
+    private Map<Long, String> idToName;
 
     public static final Logger logger = Logger.getLogger("com.singularity.TibcoJMXMonitor.ProcessInfo");
 
     public ProcessInfoAggregator() {
         allProcessStats = new HashMap<String, ProcessStats>();
+        idToName = new HashMap<Long, String>();
     }
 
     public Map<String, ProcessStats> getAllProcessStats() {
         return allProcessStats;
     }
 
-    public void handle(ProcessInfo info) {
+    public void handleProcessInfo(ProcessInfo info) {
         String procName = info.getProcessName();
         String mainProcName = info.getMainProcessName();
         String subProcessName = info.getSubProcessName();
@@ -43,7 +48,7 @@ public class ProcessInfoAggregator {
             logger.error("Invalid data returned, main process name and process name are both " + mainProcName);
         } else if (subProcessName == null || subProcessName.isEmpty()) {
             // The procName here is the job name
-            handleNoSubProcess(mainProcName, info.getDuration());
+            handleNoSubProcess(mainProcName, info.getDuration(), info.getId());
         } else if (procName.equals(subProcessName)) {
             // Error.  A process cannot have itself as a sub-process
             logger.error("Invalid data returned, process name is same as sub-process name: " + procName);
@@ -54,11 +59,11 @@ public class ProcessInfoAggregator {
             handleError(info);
         } else {
             // Main non-null, process name non-null, sub-process name non-null
-            handleFullInfo(mainProcName, subProcessName, info.getDuration());
+            handleFullInfo(mainProcName, subProcessName, info.getDuration(), info.getId());
         }
     }
 
-    private void handleNoSubProcess(String mainProcessName, long duration) {
+    private void handleNoSubProcess(String mainProcessName, long duration, Long id) {
         if (logger.isDebugEnabled()) {
             logger.debug("handle main, main=" + mainProcessName);
         }
@@ -69,11 +74,12 @@ public class ProcessInfoAggregator {
                 allProcessStats.put(mainProcessName, stats);
             }
 
+            idToName.put(id, mainProcessName);
             stats.putMetrics(duration);
         }
     }
 
-    private void handleFullInfo(String mainProcessName, String subProcessName, long duration) {
+    private void handleFullInfo(String mainProcessName, String subProcessName, long duration, Long id) {
         if (logger.isDebugEnabled()) {
             logger.debug("handle full, parent=" + mainProcessName + ", subProc=" + subProcessName);
         }
@@ -84,11 +90,19 @@ public class ProcessInfoAggregator {
                 allProcessStats.put(mainProcessName, stats);
             }
 
+            idToName.put(id, mainProcessName);
             stats.putMetrics(duration, subProcessName);
         }
     }
 
     private void handleError(ProcessInfo info) {
         System.out.println("ERROR in info obj " + info);
+    }
+
+    public void handleErrorInfo(CompositeData cd) {
+        String name = idToName.get((Long) cd.get("Id"));
+        if (name != null) {
+            allProcessStats.get(name).tallyError();
+        }
     }
 }

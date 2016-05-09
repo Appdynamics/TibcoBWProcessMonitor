@@ -11,6 +11,7 @@ public class ProcessStats {
     private String processName;
     private long totalDuration;
     private int count;
+    private int errors;
 
     private Map<String, int[]> subProcessInvocations;
 
@@ -19,6 +20,7 @@ public class ProcessStats {
         count = 0;
         totalDuration = 0;
         subProcessInvocations = new HashMap<String, int[]>();
+        errors = 0;
     }
 
     public String getProcessName() {
@@ -43,6 +45,10 @@ public class ProcessStats {
         val[0]++;
     }
 
+    public void tallyError() {
+        errors++;
+    }
+
     public long getAverageDuration() {
         if (count > 0) {
             return totalDuration / count;
@@ -57,6 +63,10 @@ public class ProcessStats {
 
     public int getCount() {
         return count;
+    }
+
+    public int getErrorCount() {
+        return errors;
     }
 
     public String toString() {

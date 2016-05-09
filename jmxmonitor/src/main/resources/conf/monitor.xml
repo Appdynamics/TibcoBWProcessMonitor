@@ -16,7 +16,8 @@
             <argument name="port" is-required="true" value="1234" default-value="1234"/>
             <argument name="object-name-pattern" is-required="true" default-value="com.tibco.bw"/>
             <argument name="retries" is-required="true" default-value="20"/>
-            <argument name="metric-path-prefix" is-required="true" default-value="Custom Metrics|Tibco|BW|ProcessInfo|"/>
+            <argument name="enable-activity-tracking" is-required="true" default-value="true"/>
+            <argument name="metric-path-prefix" is-required="true" default-value="Custom Metrics|Tibco|BW|"/>
         </task-arguments>
         <java-task>
             <classpath>jmxmonitor-1.0.final.jar</classpath>
