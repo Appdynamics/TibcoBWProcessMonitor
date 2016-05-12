@@ -23,16 +23,15 @@ public class TibcoJMXMonitor extends AManagedMonitor {
 
     protected String metricPathPrefix;
     private String mbeanPattern;
-    int retries = -1;
-    int port = -1;
+    int[] portList = null;
+    int[] portRetries = null;
     private boolean isInitialized;
     private boolean isDisabled;
+    private boolean activityTrackingEnabled;
     private JMXConnector jmxConnector;
-    private MBeanServerConnection mbeanConn = null;
 
     private MetricHandler metrics;
     private BWExecutionTracker execTracker;
-    private ProcessExecutionTracker oldProcessTracker;
     private ProcessAndActivityTracker newProcessTracker;
 
     // Metric override capability
@@ -97,6 +96,7 @@ public class TibcoJMXMonitor extends AManagedMonitor {
         logger.debug("Execute");
 
         if (isDisabled) {
+            logger.debug("Tibco BW JMX extension has been disabled");
             return new TaskOutput("Tibco BW JMX extension has been disabled");
         }
 
@@ -112,6 +112,14 @@ public class TibcoJMXMonitor extends AManagedMonitor {
             } else {
                 logger.info("metricPathPrefix set to " + metricPathPrefix);
             }
+
+            String activityString = arguments.get("enable-activity-tracking");
+            if (activityString == null) {
+                activityTrackingEnabled = true;
+            } else {
+                activityTrackingEnabled = Boolean.parseBoolean(activityString);
+            }
+            logger.info("Activity tracking enabled? " + activityTrackingEnabled);
 
             if (!isDisabled) {
                 mbeanPattern = arguments.get("object-name-pattern");
@@ -130,64 +138,49 @@ public class TibcoJMXMonitor extends AManagedMonitor {
 
             metrics = new MetricHandler(this, metricPathPrefix, opsAndMetricNames);
             execTracker = new BWExecutionTracker(metrics);
-            oldProcessTracker = new ProcessExecutionTracker(metrics);
-            newProcessTracker = new ProcessAndActivityTracker(metrics);
-
+            newProcessTracker = new ProcessAndActivityTracker(metrics, activityTrackingEnabled);
 
             if (!isDisabled) {
-                if (port == -1) {
-                    String portStr = arguments.get("port");
-                    if (portStr == null) {
-                        throw new IllegalArgumentException("TibcoJMXMonitor can't start: no value for port in monitor.xml");
+                getPortList(arguments.get("port"), arguments.get("retries"));
+            }
+
+            isInitialized = true;
+            logger.info("Configuration: mbeanPattern=" + mbeanPattern + ", port=" + arguments.get("port") +
+                    ", retries=" + arguments.get("retries") + ", prefix=" + metricPathPrefix);
+        }
+
+        TaskOutput result = new TaskOutput("Success");
+
+        if (!isDisabled) {
+            boolean oneSuccess = false;
+            for (int i = 0; i < portList.length; ++i) {
+                if (portRetries[i] > 0) {
+                    oneSuccess = true;
+                    logger.debug("Polling on port " + portList[i]);
+                    MBeanServerConnection conn = connect(portList[i]);
+                    if (conn == null) {
+                        portRetries[i]--;
+                        logger.error("Failed to connect to port " + portList[i] + ", will retry " + portRetries[i] + " more times.");
+                        result = new TaskOutput("Couldn't connect, will retry");
                     } else {
-                        try {
-                            port = Integer.parseInt(arguments.get("port"));
-                        } catch (Exception e) {
-                            isDisabled = true;
-                            throw new IllegalArgumentException("TibcoJMXMonitor can't start: illegal value for port in monitor.xml: " + portStr);
+                        logger.debug("Successfully connected to JMX port");
+                        if (!execOnce(conn)) {
+                            portRetries[i]--;
+                            result = new TaskOutput("Execution failure, will retry " + portRetries[i] + " more times");
                         }
                     }
                 }
             }
 
-            if (!isDisabled) {
-                if (retries == -1) {
-                    String retriesString = arguments.get("retries");
-                    try {
-                        retries = Integer.parseInt(retriesString);
-                    } catch (Exception e) {
-                        isDisabled = true;
-                        throw new IllegalArgumentException("TibcoJMXMonitor can't start: illegal value for retries in monitor.xml: " + retriesString);
-                    }
-                }
+            if (!oneSuccess) {
+                isDisabled = true;
             }
-
-            if (!isDisabled) {
-                if (!connect()) {
-                    retries--;
-                    return new TaskOutput("Couldn't connect, will retry");
-                } else {
-                    logger.info("Successfully connected to JMX port");
-                }
-            }
-
-            logger.info("Configuration: mbeanPattern=" + mbeanPattern + ", port=" + port + ", retries=" + retries + ", prefix=" + metricPathPrefix);
-        }
-
-        TaskOutput result = new TaskOutput("Success");
-
-        if (!execOnce()) {
-            result = new TaskOutput("Execution failure, will retry");
-        }
-
-        if (retries == 0) {
-            isDisabled = true;
         }
 
         return result;
     }
 
-    private boolean execOnce() {
+    private boolean execOnce(MBeanServerConnection mbeanConn) {
 
         boolean result = false;
 
@@ -209,8 +202,6 @@ public class TibcoJMXMonitor extends AManagedMonitor {
                 }
 
             } catch (Exception e) {
-                retries--;
-                mbeanConn = null;
                 logger.error("Exec error, will retry", e);
             }
         }
@@ -220,23 +211,74 @@ public class TibcoJMXMonitor extends AManagedMonitor {
         return result;
     }
 
-    protected boolean connect() {
-
-        boolean result = true;
-
-        connectByRMI(port);
-        if (mbeanConn == null) {
-            retries--;
-            result = false;
-        } else {
-            logger.info("Successfully connected to JMX");
-        }
-
-        return result;
+    protected MBeanServerConnection connect(int port) {
+        return connectByRMI(port);
     }
 
-    protected void setMbeanConnection(MBeanServerConnection mbeanConn) {
-        this.mbeanConn = mbeanConn;
+    protected void setPortList(int[] portList) {
+        this.portList = portList;
+    }
+
+    protected void setRetriesList(int[] retriesList) {
+        this.portRetries = retriesList;
+    }
+
+    protected void getPortList(String portListArg, String retriesArg) {
+
+        if (portList == null) {
+            if (portListArg == null) {
+                isDisabled = true;
+                throw new IllegalArgumentException("TibcoJMXMonitor can't start: no value for port in monitor.xml");
+            } else {
+
+                int retries = -1;
+                try {
+                    retries = Integer.parseInt(retriesArg);
+
+                    List<Integer> allPorts = new ArrayList<Integer>();
+                    StringTokenizer tok = new StringTokenizer(portListArg, ",");
+                    while (tok.hasMoreTokens()) {
+                        String onePortStr = tok.nextToken();
+                        try {
+                            int port = Integer.parseInt(onePortStr);
+                            if (port > 0) {
+                                if (logger.isDebugEnabled()) {
+                                    logger.debug("Will poll JMX on port " + port);
+                                }
+                                allPorts.add(port);
+                            } else {
+                                logger.error("Illegal negative value for port: " + onePortStr);
+                            }
+                        } catch (Exception e) {
+                            logger.error("Illegal non-integer port value: " + onePortStr);
+                        }
+                    }
+
+                    if (allPorts.size() > 0) {
+                        int[] ports = new int[allPorts.size()];
+                        for (int i = 0; i < allPorts.size(); ++i) {
+                            ports[i] = allPorts.get(i).intValue();
+                        }
+
+                        setPortList(ports);
+
+                        int[] retriesList = new int[ports.length];
+                        for (int i = 0; i < retriesList.length; ++i) {
+                            retriesList[i] = retries;
+                        }
+
+                        setRetriesList(retriesList);
+
+                    } else {
+                        isDisabled = true;
+                        logger.error("No valid ports are configured, Tibco monitoring will be disabled.  To fix, correct the value for port in monitor.xml and restart the machine agent");
+                    }
+                } catch (Exception e) {
+                    isDisabled = true;
+                    throw new IllegalArgumentException("TibcoJMXMonitor can't start: illegal value for retries in monitor.xml: " + retriesArg);
+                }
+            }
+        }
     }
 
     private Object[] getProcessExceptions(ObjectName mbeanName) {
@@ -248,19 +290,19 @@ public class TibcoJMXMonitor extends AManagedMonitor {
         return null;
     }
 
-    private void connectByRMI(int port) {
+    private MBeanServerConnection connectByRMI(int port) {
         String host = "localhost";
         String url = "service:jmx:rmi:///jndi/rmi://localhost:" + port + "/jmxrmi";
+        MBeanServerConnection result = null;
 
         try {
             JMXServiceURL serviceUrl = new JMXServiceURL(url);
             jmxConnector = JMXConnectorFactory.connect(serviceUrl, null);
-            MBeanServerConnection newConn = jmxConnector.getMBeanServerConnection();
-            setMbeanConnection(newConn);
-            // now query to get the beans or whatever
+            result = jmxConnector.getMBeanServerConnection();
         } catch (Exception e) {
             logger.error("Exception while connecting to JMX", e);
-            isDisabled = true;
         }
+
+        return result;
     }
 }

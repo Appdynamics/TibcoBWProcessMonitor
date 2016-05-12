@@ -22,6 +22,7 @@ public class ProcessAndActivityTracker {
 
     private MetricHandler metricHandler;
     private Map<String, int[]> activeProcessInfo;
+    private boolean trackActivities;
 
     private static final Logger logger = Logger.getLogger("com.singularity.TibcoJMXMonitor.newProc");
 
@@ -30,9 +31,10 @@ public class ProcessAndActivityTracker {
     private static final String[] GET_PROCS_SIG = { Long.class.getName(),
             String.class.getName(), Integer.class.getName(), Integer.class.getName(), String.class.getName() };
 
-    public ProcessAndActivityTracker(MetricHandler metricHandler) {
+    public ProcessAndActivityTracker(MetricHandler metricHandler, boolean trackActivities) {
         this.metricHandler = metricHandler;
         activeProcessInfo = new HashMap<String, int[]>();
+        this.trackActivities = trackActivities;
     }
 
     public void getProcessStats(MBeanServerConnection mbeanConn, ObjectName mbeanName) {
@@ -143,7 +145,10 @@ public class ProcessAndActivityTracker {
                         metricHandler.printIndividual(prefix + "Current Execution Time (ms)",
                                 String.valueOf(currExec));
 
-                        getActivities(mbeanConn, mbeanName, name, prefix);
+                        if (trackActivities) {
+                            getActivities(mbeanConn, mbeanName, name, prefix);
+                        }
+
                     } else {
                         logger.debug("    ---> Value, type=" + value.getClass().getName() + ": " + value);
                     }

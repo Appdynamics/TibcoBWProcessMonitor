@@ -7,16 +7,16 @@ import javax.management.MBeanServerConnection;
  */
 public class MockJMXMonitor extends TibcoJMXMonitor {
 
-    protected boolean connect() {
+    protected MBeanServerConnection connect(int port) {
 
+        MBeanServerConnection newConn = null;
         try {
-            MBeanServerConnection newConn = (MBeanServerConnection) Class.forName("com.appdynamics.tibco.jmx.MockMBeanServerConnection").newInstance();
-            setMbeanConnection(newConn);
+            newConn = (MBeanServerConnection) Class.forName("com.appdynamics.tibco.jmx.MockMBeanServerConnection").newInstance();
         } catch (Exception e) {
             e.printStackTrace();
         }
 
-        return true;
+        return newConn;
     }
 
     protected void printCollectiveMetric(String key, String value) {

@@ -13,6 +13,8 @@
         <type>java</type>
         <execution-timeout-in-secs>120</execution-timeout-in-secs>
         <task-arguments>
+            <!-- The value for port can be a comma-separated list.  The extension will monitor
+                 all ports specified in the list. -->
             <argument name="port" is-required="true" value="1234" default-value="1234"/>
             <argument name="object-name-pattern" is-required="true" default-value="com.tibco.bw"/>
             <argument name="retries" is-required="true" default-value="20"/>
