@@ -1,4 +1,4 @@
-package main.java.com.appdynamics.hawkmonitor;
+package com.appdynamics.hawkmonitor;
 
 /**
  * Created by trader on 1/15/16.
@@ -11,6 +11,10 @@ package main.java.com.appdynamics.hawkmonitor;
 
 import COM.TIBCO.hawk.console.hawkeye.*;
 import COM.TIBCO.hawk.talon.*;
+import org.apache.log4j.Logger;
+
+import java.util.HashMap;
+import java.util.Map;
 
 /*
  This class is provided purely for demonstration purposes. The format of its
@@ -23,53 +27,44 @@ import COM.TIBCO.hawk.talon.*;
 */
 
 public class HawkConsoleMetrics {
+
     TIBHawkConsole console;
     AgentManager agentMgr;
     AgentMonitor agentMon;
     Subscription subscription;
 
-    /**
-     * FIXME: this has not been tested!  It is provided as boilerplate only!
-     *
-     * @param hawkDomain
-     * @param rvService
-     * @param rvNetwork
-     * @param rvDaemon
-     */
+    private static final Logger logger = Logger.getLogger("com.singularity.TibcoHawkConsoleMetricManager");
 
-    HawkConsoleMetrics(String hawkDomain, String rvService, String rvNetwork, String rvDaemon) {
+    HawkConsoleMetrics(Map<String, Object> connectProps) throws Exception {
         // Create the TIBHawkConsole Instance
-        console = new TIBHawkConsole(hawkDomain, rvService, rvNetwork, rvDaemon);
+        console = TIBHawkConsoleFactory.getInstance().createHawkConsole(connectProps);
+        logger.info("XXX created console!");
         // retrieve and initialize AgentManager
         agentMgr = console.getAgentManager();
-        try {
-            agentMgr.initialize();
-        } catch (Exception e) {
-            System.out.println("ERROR while initializing AgentManager: " + e);
-            System.exit(1);
-        }
-
+        logger.info("XXX get agent manager!");
+        agentMgr.initialize();
+        logger.info("XXX initialized agent manager!");
         agentMon = console.getAgentMonitor();
-        try {
-            agentMon.initialize();
-        } catch (Exception e) {
-            System.out.println("ERROR while initializing AgentMonitor: " + e);
-            System.exit(1);
-        }
+        logger.info("XXX got agent monitor!");
+        agentMon.initialize();
+        logger.info("XXX initialized agent monitor!");
 
         listMicroAgents();
+        logger.info("XXX ctor done!");
+    }
+
+    public void tick() {
+
     }
 
     private void listMicroAgents() {
         MicroAgentListMonitorListener maListener = new MicroAgentListMonitorListener() {
-            @Override
             public void onMicroAgentAdded(MicroAgentListMonitorEvent microAgentListMonitorEvent) {
-                System.out.println("New micro agent: " + microAgentListMonitorEvent.getMicroAgentID().getDisplayName());
+                logger.info("New micro agent: " + microAgentListMonitorEvent.getMicroAgentID().getDisplayName());
             }
 
-            @Override
             public void onMicroAgentRemoved(MicroAgentListMonitorEvent microAgentListMonitorEvent) {
-                System.out.println("Removed micro agent: " + microAgentListMonitorEvent.getMicroAgentID().getDisplayName());
+                logger.info("Removed micro agent: " + microAgentListMonitorEvent.getMicroAgentID().getDisplayName());
             }
         };
 
@@ -77,14 +72,6 @@ public class HawkConsoleMetrics {
             agentMon.addMicroAgentListMonitorListener(maListener);
         } catch (Exception e) {
             e.printStackTrace();
-            System.exit(1);
-        }
-
-        System.out.println("Sleeping 10 seconds");
-        try {
-            Thread.sleep(10000);
-        } catch (InterruptedException ie) {
-
         }
     }
 
@@ -269,9 +256,12 @@ public class HawkConsoleMetrics {
                         "It is intended to be used purely for demonstration and educational purposes ONLY.\n"
         );
 
-        if (args.length == 4) {
-            ca = new HawkConsoleMetrics(args[0], args[1], args[2], args[3]);
+        Map<String, Object> props = new HashMap<String, Object>();
+        try {
+            ca = new HawkConsoleMetrics(props);
             ca.listMicroAgents();
+        } catch (Exception e) {
+            e.printStackTrace();
         }
     }
 }

@@ -24,6 +24,13 @@
             <systemPath>${tibhawk}/lib/console.jar</systemPath>
         </dependency>
         <dependency>
+            <groupId>whatsittoyou</groupId>
+            <artifactId>whatsittoyou</artifactId>
+            <version>whatsittoyou</version>
+            <scope>system</scope>
+            <systemPath>${tibhawk}/lib/util.jar</systemPath>
+        </dependency>
+        <dependency>
             <groupId>irrelevant</groupId>
             <artifactId>irrelevant</artifactId>
             <version>irrelevant</version>

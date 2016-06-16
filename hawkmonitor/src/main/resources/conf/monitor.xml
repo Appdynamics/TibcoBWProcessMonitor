@@ -1,0 +1,62 @@
+<monitor>
+    <name>JMXHawkMonitor</name>
+    <type>managed</type>
+    <description>Monitors Tibco Hawk metrics via a local JMX connection</description>
+    <monitor-configuration>
+    </monitor-configuration>
+    <monitor-run-task>
+        <execution-style>periodic</execution-style>
+        <execution-frequency-in-seconds>60</execution-frequency-in-seconds>
+        <name>Tibco Hawk Console Monitor Run Task</name>
+        <display-name>Tibco Hawk Console Monitor Task</display-name>
+        <description>Tibco Hawk Console Monitor Task</description>
+        <type>java</type>
+        <execution-timeout-in-secs>120</execution-timeout-in-secs>
+        <task-arguments>
+
+            <!-- Generic properties -->
+            <argument name="retries" is-required="true" default-value="20"/>
+            <argument name="enable-activity-tracking" is-required="true" default-value="true"/>
+            <argument name="metric-path-prefix" is-required="true" default-value="Custom Metrics|TibcoHawk|BW|"/>
+
+            <!-- The Hawk Console API allows connections via any one of Tibco ActiveSpaces (AS),
+                 Tibco Rendezvous (RV), or Tibco EMS.  Only one may be enabled here.  Depending
+                 on the connection method, other properties must be specified.  For reference, see
+                 https://docs.tibco.com/pub/hawk/5.1.0/doc/api/console-api/COM/TIBCO/hawk/console/hawkeye/TIBHawkConsoleFactory.html
+             -->
+
+            <!-- valid values: as, rv, ems -->
+            <argument name="connection-method" value="rv" default-value="rv"/>
+
+            <!-- RV properties -->
+            <argument name="hawk-domain" is-required="true" default-value="DemoDomain"/>
+            <argument name="rv-service" is-required="true" default-value="7474"/>
+            <argument name="rv-network" is-required="true" default-value=";"/>
+            <argument name="rv-daemon" is-required="true" default-value="tcp:7474"/>
+
+            <!-- AS properties -->
+            <!--
+            <argument name="as-listen-url" is-required="true" default-value="localhost:5000"/>
+            <argument name="as-discover-url" is-required="false" default-value=""/>
+            <argument name="as-member-name" is-required="false" default-value=""/>
+            <argument name="as-transport-timeout" is-required="false" default-value=""/>
+            <argument name="as-rcv-buffer-size" is-required="false" default-value=""/>
+            <argument name="as-vnode-count" is-required="false" default-value=""/>
+            <argument name="as-worker-count" is-required="false" default-value=""/>
+            -->
+
+            <!-- EMS properties-->
+            <!--
+            <argument name="ems-url" is-required="true" default-value="localhost://7222"/>
+            <argument name="ems-username" is-required="false" default-value=""/>
+            <argument name="ems-password" is-required="false" default-value=""/>
+            NOTE: SSL params not currently supported
+            -->
+
+        </task-arguments>
+        <java-task>
+            <classpath>hawkmonitor-1.0-SNAPSHOT.jar</classpath>
+            <impl-class>com.appdynamics.hawkmonitor.HawkConsoleMonitor</impl-class>
+        </java-task>
+    </monitor-run-task>
+</monitor>
